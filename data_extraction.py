@@ -1,5 +1,50 @@
 import json
 import re
+from google import genai
+import json
+
+client = genai.Client()
+
+def clean_json_response(raw_text):
+    text = raw_text.strip()
+    if text.startswith("```"):
+        # remove the first line (```json or ```) and the last line (```)
+        lines = text.split("\n")
+        text = "\n".join(lines[1:-1])
+    return text
+
+def extract_fields_with_ai(text):
+    prompt = f"""Read the following shipping document and extract these 7 fields:
+shipper, consignee, notify_party, port_of_loading, port_of_discharge, container_count, gross_weight_kg
+
+Rules:
+- The document may use different wording for the same field (e.g. "Load Port" means port_of_loading, "Total Containers" means container_count).
+- container_count should be just the number (e.g. 6, not "6 x 40'HC").
+- gross_weight_kg should be just the number (e.g. 131058, not "131,058 KG").
+- If a field cannot be found, use null.
+- For shipper and consignee, return only the company name, not the address
+
+Respond with ONLY a JSON object, no other text. Example format:
+{{"shipper": "...", "consignee": "...", "notify_party": "...", "port_of_loading": "...", "port_of_discharge": "...", "container_count": 0, "gross_weight_kg": 0}}
+
+Document:
+{text}
+"""
+
+    response = client.models.generate_content(
+        model="gemini-3.6-flash",
+        contents=prompt
+    )
+
+    cleaned = clean_json_response(response.text)
+
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        print("JSON parsing failed:", e)
+        print("Raw response was:", response.text)
+        return None  # extraction failed — should trigger human review later
 
 FIELD_LABELS = {
     "shipper": ["shipper"],
@@ -68,6 +113,7 @@ def process_email(email_json_path):
     Returns the seven fields needed for checking.
     """
     email = convert_to_list(email_json_path)
+    email_id = email["email_id"]
     
     si_path, bl_path = None, None
     for path in email["attachments"]:
@@ -75,25 +121,84 @@ def process_email(email_json_path):
             si_path = path
         elif "_BL" in path:
             bl_path = path
-    
-    with open(si_path, "r") as f:
-        si_text = f.read()
-    with open(bl_path, "r") as f:
-        bl_text = f.read()
-    
-    si_fields = extract_all_fields(si_text)
-    bl_fields = extract_all_fields(bl_text)
-    
-    return email["email_id"], si_fields, bl_fields
 
-if __name__ == '__main__':
-    email_id, si_fields, bl_fields = process_email("email_004.json")
+    # if safeguards if si or bl does not exist
+    if si_path is None and bl_path is None:
+        return {
+            "email_id": email_id,
+            "status": "escalate",
+            "reason": "No SI and BL attachment found"
+        }
+    if si_path is None:
+        return {
+            "email_id": email_id,
+            "status": "escalate",
+            "reason": "No SI attachment found"
+        }
+    if bl_path is None:
+        return {
+            "email_id": email_id,
+            "status": "escalate",
+            "reason": "No BL attachment found"
+        }
+    
+    try:
+        with open(si_path, "r") as f:
+            si_text = f.read()
+        with open(bl_path, "r") as f:
+            bl_text = f.read()
+    except(FileNotFoundError, UnicodeDecodeError) as e:
+        return {
+            "email_id": email_id,
+            "status": "escalate",
+            "reason": f"Could not read attachment: {e}"
+        }
 
-    print("Email ID:", email_id)
-    print("\n--- SI fields ---")
-    for k, v in si_fields.items():
-        print(f"{k}: {v}")
+    
+    si_fields = extract_all_fields_hybrid(si_text)
+    bl_fields = extract_all_fields_hybrid(bl_text)
 
-    print("\n--- BL fields ---")
-    for k, v in bl_fields.items():
-        print(f"{k}: {v}")
+    si_missing = [k for k, v in si_fields.items() if v is None]
+    bl_missing = [k for k, v in bl_fields.items() if v is None]
+
+    if si_missing or bl_missing:
+        return {
+            "email_id": email_id,
+            "status": "escalate",
+            "reason": "Field extraction failed for SI or BL"
+        }
+    
+    return {
+        "email_id": email_id,
+        "status": "ok",
+        "si_fields": si_fields,
+        "bl_fields": bl_fields}
+
+def extract_all_fields_hybrid(text):
+    result = extract_all_fields(text)  # rule-based first
+    if any(v is None for v in result.values()):
+        ai_result = extract_fields_with_ai(text)
+        if ai_result:
+            for k, v in result.items():
+                if v is None:
+                    result[k] = ai_result.get(k)
+    return result
+
+# if __name__ == '__main__':
+#     email_id, si_fields, bl_fields = process_email("email_004.json")
+
+#     print("Email ID:", email_id)
+#     print("\n--- SI fields ---")
+#     for k, v in si_fields.items():
+#         print(f"{k}: {v}")
+
+#     print("\n--- BL fields ---")
+#     for k, v in bl_fields.items():
+#         print(f"{k}: {v}")
+
+# if __name__ == '__main__':
+#     with open("attachments/email_004_SI.txt", "r") as f:
+#         si_text = f.read()
+
+#     result = extract_fields_with_ai(si_text)
+#     print(result)
