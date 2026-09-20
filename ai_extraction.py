@@ -1,8 +1,10 @@
 from google import genai
+from groq import Groq
 import time
 import json
 
-client = genai.Client()
+# client = genai.Client()
+client = Groq()
 
 def clean_json_response(raw_text):
     text = raw_text.strip()
@@ -31,17 +33,23 @@ Document:
 """
     for attempt in range(max_retries):
         try:
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt
+            # response = client.models.generate_content(
+            #     model="gemini-3.6-flash",
+            #     contents=prompt
+            # )
+            response = client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=[{"role": "user", "content": prompt}]
             )
-            cleaned = clean_json_response(response.text)
+            raw_text = response.choices[0].message.content
+            cleaned = clean_json_response(raw_text)
             return json.loads(cleaned)
         except json.JSONDecodeError as e:
             print("JSON parsing failed:", e)
             return None
         except Exception as e:
-            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+            error_str = str(e)
+            if "rate_limit" in error_str.lower() or "429" in error_str:
                 print("Daily quota exhausted, skip AI fallback for this field")
                 return None
             if attempt < max_retries - 1:
