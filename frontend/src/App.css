@@ -855,3 +855,262 @@ button {
     grid-template-columns: 1fr;
   }
 }
+
+.review-count {
+  background: #fffaeb;
+  border: 1px solid #fedf89;
+  color: #b54708;
+  padding: 9px 13px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.7fr) minmax(300px, 1fr);
+  gap: 22px;
+}
+
+.review-case-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid #eaecf0;
+}
+
+.review-case-header h3 {
+  margin: 9px 0 4px;
+  font-size: 21px;
+}
+
+.review-case-header p {
+  margin: 0;
+  color: #667085;
+  font-size: 12px;
+}
+
+.review-priority {
+  display: inline-block;
+  padding: 5px 9px;
+  background: #fffaeb;
+  color: #b54708;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.confidence-warning {
+  font-size: 26px;
+  font-weight: 700;
+  color: #b54708;
+  text-align: right;
+}
+
+.confidence-warning span {
+  display: block;
+  font-size: 11px;
+  color: #98a2b3;
+  font-weight: 500;
+}
+
+.review-reason {
+  margin: 22px 0;
+  padding: 16px;
+  background: #fffaf5;
+  border: 1px solid #fed7aa;
+  border-radius: 12px;
+}
+
+.review-reason strong {
+  color: #9a3412;
+}
+
+.review-reason p {
+  margin: 7px 0 0;
+  color: #9a3412;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.source-evidence {
+  margin-top: 26px;
+}
+
+.source-evidence h3 {
+  margin: 5px 0 15px;
+}
+
+.document-preview {
+  overflow: hidden;
+  border: 1px solid #d0d5dd;
+  border-radius: 12px;
+  background: #fcfcfd;
+}
+
+.document-line {
+  padding: 15px 17px;
+  border-top: 1px solid #eaecf0;
+}
+
+.document-line:first-child {
+  border-top: 0;
+}
+
+.document-line > span:first-child {
+  display: block;
+  margin-bottom: 6px;
+  color: #667085;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.document-line strong {
+  font-size: 13px;
+}
+
+.uncertain-line {
+  background: #fffbfa;
+  border-left: 3px solid #f04438;
+}
+
+.uncertain-badge {
+  display: inline-block !important;
+  margin-left: 8px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #fef3f2;
+  color: #b42318 !important;
+  font-size: 10px !important;
+}
+
+.review-action-panel h3 {
+  margin: 5px 0 22px;
+}
+
+.ai-suggestion {
+  padding: 16px;
+  margin-bottom: 22px;
+  background: #f4f7ff;
+  border: 1px solid #d9e2ff;
+  border-radius: 12px;
+}
+
+.ai-suggestion > span {
+  display: block;
+  color: #667085;
+  font-size: 11px;
+  margin-bottom: 7px;
+}
+
+.ai-suggestion strong {
+  display: block;
+  font-size: 14px;
+}
+
+.suggestion-confidence {
+  margin-top: 8px;
+  color: #667085;
+  font-size: 11px;
+}
+
+.review-label {
+  display: block;
+  margin-bottom: 7px;
+  color: #344054;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.review-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid #d0d5dd;
+  border-radius: 9px;
+  outline: none;
+  font: inherit;
+  font-size: 13px;
+}
+
+.review-input:focus {
+  border-color: #4f7cff;
+  box-shadow: 0 0 0 3px rgba(79, 124, 255, 0.1);
+}
+
+.suggestion-button {
+  width: 100%;
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #d0d5dd;
+  border-radius: 9px;
+  background: white;
+  color: #344054;
+  cursor: pointer;
+}
+
+.primary-button {
+  border: 0;
+  border-radius: 9px;
+  padding: 11px 16px;
+  background: #3659a7;
+  color: white;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.resolve-button {
+  width: 100%;
+  margin-top: 12px;
+}
+
+.primary-button:disabled {
+  background: #d0d5dd;
+  cursor: not-allowed;
+}
+
+.review-note {
+  margin: 12px 0 0;
+  text-align: center;
+  color: #98a2b3;
+  font-size: 11px;
+}
+
+.review-success {
+  max-width: 540px;
+  margin: 80px auto;
+  text-align: center;
+  padding: 50px;
+}
+
+.success-check {
+  width: 60px;
+  height: 60px;
+  display: grid;
+  place-items: center;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #ecfdf3;
+  color: #027a48;
+  font-size: 28px;
+  font-weight: 700;
+}
+
+.review-success h3 {
+  font-size: 23px;
+  margin-bottom: 8px;
+}
+
+.review-success p {
+  color: #667085;
+  line-height: 1.5;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 1000px) {
+  .review-layout {
+    grid-template-columns: 1fr;
+  }
+}
