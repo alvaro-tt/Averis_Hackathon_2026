@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import "./App.css";
 
-type Page = "dashboard" | "inbox";
+type Page = "dashboard" | "inbox" | "comparison";
 
 type Status = "Verified" | "Mismatch" | "Needs Review" | "Classified";
 
@@ -21,6 +21,13 @@ type EmailRecord = {
   confidence: number;
   attachments: number;
   receivedAt: string;
+};
+
+type ComparisonField = {
+  label: string;
+  siValue: string;
+  blValue: string;
+  match: boolean;
 };
 
 const emails: EmailRecord[] = [
@@ -106,6 +113,51 @@ const emails: EmailRecord[] = [
   },
 ];
 
+const comparisonFields: ComparisonField[] = [
+  {
+    label: "Shipper",
+    siValue: "APRIL FAR EAST (M) SDN BHD",
+    blValue: "APRIL FAR EAST (M) SDN BHD",
+    match: true,
+  },
+  {
+    label: "Consignee",
+    siValue: "EAST BRIGHT FZ-LLC",
+    blValue: "UAB NOVAKOPA",
+    match: false,
+  },
+  {
+    label: "Notify Party",
+    siValue: "EAST BRIGHT FZ-LLC",
+    blValue: "UAB NOVAKOPA",
+    match: false,
+  },
+  {
+    label: "Port of Loading",
+    siValue: "NANTONG, CHINA (CNNTG)",
+    blValue: "NANTONG, CHINA (CNNTG)",
+    match: true,
+  },
+  {
+    label: "Port of Discharge",
+    siValue: "KARACHI, PAKISTAN (PKKHI)",
+    blValue: "KARACHI, PAKISTAN (PKKHI)",
+    match: true,
+  },
+  {
+    label: "Container Count",
+    siValue: "6",
+    blValue: "6",
+    match: true,
+  },
+  {
+    label: "Gross Weight",
+    siValue: "131,058 kg",
+    blValue: "131,058 kg",
+    match: true,
+  },
+];
+
 function App() {
   const [page, setPage] = useState<Page>("dashboard");
 
@@ -114,10 +166,16 @@ function App() {
       <Sidebar page={page} setPage={setPage} />
 
       <main className="main-content">
-        {page === "dashboard" ? (
+        {page === "dashboard" && (
           <Dashboard onViewInbox={() => setPage("inbox")} />
-        ) : (
-          <Inbox />
+        )}
+
+        {page === "inbox" && (
+          <Inbox onOpenComparison={() => setPage("comparison")} />
+        )}
+
+        {page === "comparison" && (
+          <ComparisonPage onBack={() => setPage("inbox")} />
         )}
       </main>
     </div>
@@ -151,7 +209,9 @@ function Sidebar({
         </button>
 
         <button
-          className={`nav-item ${page === "inbox" ? "active" : ""}`}
+          className={`nav-item ${
+            page === "inbox" || page === "comparison" ? "active" : ""
+          }`}
           onClick={() => setPage("inbox")}
         >
           Inbox
@@ -293,7 +353,11 @@ function Dashboard({ onViewInbox }: { onViewInbox: () => void }) {
   );
 }
 
-function Inbox() {
+function Inbox({
+  onOpenComparison,
+}: {
+  onOpenComparison: () => void;
+}) {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"All" | Category>("All");
 
@@ -376,12 +440,21 @@ function Inbox() {
           </div>
 
           {filteredEmails.map((email) => (
-            <button className="inbox-row" key={email.id}>
+            <button
+              className="inbox-row"
+              key={email.id}
+              onClick={() => {
+                if (email.id === "email_004") {
+                  onOpenComparison();
+                }
+              }}
+            >
               <div className="inbox-email">
                 <div className="email-icon">✉</div>
 
                 <div>
                   <strong>{email.subject}</strong>
+
                   <span>
                     {email.sender} · {email.id}
                   </span>
@@ -405,12 +478,16 @@ function Inbox() {
                 <div className="confidence-track">
                   <div
                     className="confidence-fill"
-                    style={{ width: `${email.confidence}%` }}
+                    style={{
+                      width: `${email.confidence}%`,
+                    }}
                   ></div>
                 </div>
               </div>
 
-              <span className="received-time">{email.receivedAt}</span>
+              <span className="received-time">
+                {email.receivedAt}
+              </span>
             </button>
           ))}
 
@@ -420,6 +497,171 @@ function Inbox() {
               <span>Try a different search or filter.</span>
             </div>
           )}
+        </div>
+      </section>
+    </>
+  );
+}
+
+function ComparisonPage({ onBack }: { onBack: () => void }) {
+  const mismatchCount = comparisonFields.filter(
+    (field) => !field.match,
+  ).length;
+
+  return (
+    <>
+      <button className="back-button" onClick={onBack}>
+        ← Back to Inbox
+      </button>
+
+      <header className="comparison-header">
+        <div>
+          <p className="eyebrow">Document Verification</p>
+
+          <h2>REQUEST BL DRAFT - PO 26067</h2>
+
+          <p className="comparison-subtitle">
+            email_004 · operations@shipping.com
+          </p>
+        </div>
+
+        <div className="comparison-header-right">
+          <StatusBadge status="Mismatch" />
+
+          <span className="comparison-confidence">
+            96% confidence
+          </span>
+        </div>
+      </header>
+
+      <section className="comparison-summary">
+        <div className="summary-icon">!</div>
+
+        <div>
+          <strong>
+            {mismatchCount} discrepancies detected
+          </strong>
+
+          <p>
+            The draft Bill of Lading does not fully match the
+            Shipping Instruction.
+          </p>
+        </div>
+      </section>
+
+      <section className="panel comparison-panel">
+        <div className="comparison-title-row">
+          <div>
+            <p className="eyebrow">Field Verification</p>
+            <h3>SI ↔ BL Comparison</h3>
+          </div>
+
+          <span className="field-count">
+            7 fields checked
+          </span>
+        </div>
+
+        <div className="comparison-table">
+          <div className="comparison-table-header">
+            <span>Field</span>
+            <span>Shipping Instruction</span>
+            <span>Bill of Lading</span>
+            <span>Result</span>
+          </div>
+
+          {comparisonFields.map((field) => (
+            <div
+              className={`comparison-row ${
+                !field.match ? "comparison-mismatch" : ""
+              }`}
+              key={field.label}
+            >
+              <strong>{field.label}</strong>
+
+              <span>{field.siValue}</span>
+
+              <span>{field.blValue}</span>
+
+              <span
+                className={
+                  field.match
+                    ? "field-result match"
+                    : "field-result mismatch"
+                }
+              >
+                {field.match ? "✓ Match" : "⚠ Mismatch"}
+              </span>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="comparison-bottom-grid">
+        <div className="panel discrepancy-panel">
+          <p className="eyebrow">Attention Required</p>
+          <h3>Detected Discrepancies</h3>
+
+          <div className="discrepancy-item">
+            <strong>Consignee</strong>
+
+            <div className="difference-values">
+              <div>
+                <span>Shipping Instruction</span>
+                <p>EAST BRIGHT FZ-LLC</p>
+              </div>
+
+              <div>
+                <span>Bill of Lading</span>
+                <p>UAB NOVAKOPA</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="discrepancy-item">
+            <strong>Notify Party</strong>
+
+            <div className="difference-values">
+              <div>
+                <span>Shipping Instruction</span>
+                <p>EAST BRIGHT FZ-LLC</p>
+              </div>
+
+              <div>
+                <span>Bill of Lading</span>
+                <p>UAB NOVAKOPA</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="panel processing-panel">
+          <p className="eyebrow">AI Processing</p>
+          <h3>Verification Details</h3>
+
+          <div className="processing-line">
+            <span>Email classification</span>
+            <strong>BL Comparison</strong>
+          </div>
+
+          <div className="processing-line">
+            <span>Documents detected</span>
+            <strong>2 / 2</strong>
+          </div>
+
+          <div className="processing-line">
+            <span>Fields extracted</span>
+            <strong>14 / 14</strong>
+          </div>
+
+          <div className="processing-line">
+            <span>Fields compared</span>
+            <strong>7 / 7</strong>
+          </div>
+
+          <div className="processing-line">
+            <span>Human review</span>
+            <strong>Not required</strong>
+          </div>
         </div>
       </section>
     </>
@@ -445,13 +687,25 @@ function StatCard({
 }
 
 function StatusBadge({ status }: { status: Status }) {
-  const className = status.toLowerCase().replaceAll(" ", "-");
+  const className = status
+    .toLowerCase()
+    .replaceAll(" ", "-");
 
-  return <span className={`status-badge ${className}`}>{status}</span>;
+  return (
+    <span className={`status-badge ${className}`}>
+      {status}
+    </span>
+  );
 }
 
-function CategoryBadge({ category }: { category: Category }) {
-  const className = category.toLowerCase().replaceAll(" ", "-");
+function CategoryBadge({
+  category,
+}: {
+  category: Category;
+}) {
+  const className = category
+    .toLowerCase()
+    .replaceAll(" ", "-");
 
   return (
     <span className={`category-badge ${className}`}>
