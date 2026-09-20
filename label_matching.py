@@ -2,13 +2,60 @@ from difflib import SequenceMatcher
 import re
 
 FIELD_LABELS = {
-    "shipper": ["shipper"],
-    "consignee": ["consignee", "to the order of"],
-    "notify_party": ["notify party", "notify"],
-    "port_of_loading": ["port of loading", "pol", "loaded from"],
-    "port_of_discharge": ["pod", "port of discharge", "discharge port", "discharged from"],
-    "container_count": ["container count", "total containers", "no. of containers"],
-    "gross_weight_kg": ["gross weight", "gross wt"],
+    "shipper": [
+        "shipper",
+        "shipper name",
+        "shipper/exporter",
+        "exporter",
+    ],
+    "consignee": [
+        "consignee",
+        "consignee (non-negotiable)",
+        "to the order of",
+        "to order of",
+        "consigned to",
+    ],
+    "notify_party": [
+        "notify party",
+        "notify",
+        "also notify",
+        "notify address",
+    ],
+    "port_of_loading": [
+        "port of loading",
+        "pol",
+        "loading port",
+        "loaded from",
+        "port of loading (pol)",
+        "place of receipt",
+        "origin port",
+    ],
+    "port_of_discharge": [
+        "port of discharge",
+        "pod",
+        "discharge port",
+        "discharged from",
+        "port of discharge (pod)",
+        "destination port",
+        "final destination",
+    ],
+    "container_count": [
+        "container count",
+        "total containers",
+        "no. of containers",
+        "number of containers",
+        "no. of containers or packages",
+        "qty of containers",
+        "total no. of containers",
+    ],
+    "gross_weight_kg": [
+        "gross weight",
+        "gross wt",
+        "gross weight (kg)",
+        "gross wt (kgs)",
+        "total gross weight",
+        "g.w.",
+    ],
 }
 
 def normalize_label(label):
@@ -26,7 +73,7 @@ def label_similarity(a, b):
 
 def extract_field(text, possible_labels, threshold = 0.85):
     """
-
+    needs optimization: currently O(7NM)
     """
     for line in text.split("\n"):
         line = line.strip()

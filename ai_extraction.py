@@ -41,6 +41,9 @@ Document:
             print("JSON parsing failed:", e)
             return None
         except Exception as e:
+            if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                print("Daily quota exhausted, skip AI fallback for this field")
+                return None
             if attempt < max_retries - 1:
                 print(f"AI call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying again...")
                 time.sleep(5)

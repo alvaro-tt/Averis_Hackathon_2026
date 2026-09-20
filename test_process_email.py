@@ -8,25 +8,28 @@ inbox = Inbox(DATA_PATH)
 emails = list(inbox)
 sample = random.sample(emails,15)
 
-ok_count = 0
-escalate_count = 0
-escalate_reasons = []
+# ok_count = 0
+# escalate_count = 0
+# escalate_reasons = []
 
+# for email in sample:
+#     result = process_email(email, inbox)
+#     if result["status"] == "ok":
+#         ok_count += 1
+#     else:
+#         escalate_count += 1
+#         escalate_reasons.append((result["email_id"], result["reason"]))
+
+# print(f"Total: {ok_count + escalate_count} | OK: {ok_count} | Escalated: {escalate_count}")
+# for eid, reason in escalate_reasons:
+#     print(f"  {eid}: {reason}")
+
+import time
+start = time.time()
+
+sample = emails[:50]  # first 50, or random.sample(emails, 50)
 for email in sample:
-    result = process_email(email, inbox)
-    if result["status"] == "ok":
-        ok_count += 1
-    else:
-        escalate_count += 1
-        escalate_reasons.append((result["email_id"], result["reason"]))
+    process_email(email, inbox)
 
-print(f"Total: {ok_count + escalate_count} | OK: {ok_count} | Escalated: {escalate_count}")
-for eid, reason in escalate_reasons:
-    print(f"  {eid}: {reason}")
-
-"""
-errors found so far:
-514 attachment is a pdf.
-107 attachment: SI is xlsx whereas the BL is a docx
-312 attachment is .txt
-"""
+elapsed = time.time() - start
+print(f"50 emails took {elapsed:.1f} seconds ({elapsed/50:.2f}s per email)")
