@@ -2,9 +2,22 @@ import json
 import re
 from google import genai
 import time
-
+from difflib import SequenceMatcher
 
 client = genai.Client()
+
+def normalize_label(label):
+    """
+    normalize strings by splitting into words and sorting them then compare
+    """
+    words = label.lower().replace("-", " ").replace("_", " ").split()
+    return " ".join(sorted(words))
+
+def label_similarity(a, b):
+    """
+    normalize typos
+    """
+    return SequenceMatcher(None, normalize_label(a), normalize_label(b)).ratio()
 
 def get_file_type(path):
     if path.lower().endswith(".txt"):
@@ -66,15 +79,15 @@ FIELD_LABELS = {
     "shipper": ["shipper"],
     "consignee": ["consignee", "to the order of"],
     "notify_party": ["notify party", "notify"],
-    "port_of_loading": ["port of loading"],
-    "port_of_discharge": ["pod", "port of discharge"],
-    "container_count": ["container count", "total containers"],
+    "port_of_loading": ["port of loading", "pol", "loaded from"],
+    "port_of_discharge": ["pod", "port of discharge", "discharge port", "discharged from"],
+    "container_count": ["container count", "total containers", "no. of containers"],
     "gross_weight_kg": ["gross weight", "gross wt"],
 }
 
-def extract_field(text, possible_labels):
+def extract_field(text, possible_labels, threshold = 0.85):
     """
-    Reads the 
+
     """
     for line in text.split("\n"):
         line = line.strip()
@@ -90,6 +103,9 @@ def extract_field(text, possible_labels):
         # check field label map for a match
         for label in possible_labels:
             if label in label_part:
+                return value_part.strip()
+            # fuzzy matching fallback to catch typos/formatting differences
+            if label_similarity(label, label_part) >= threshold:
                 return value_part.strip()
     return None
 
@@ -129,7 +145,15 @@ def process_email(email, inbox):
     Returns the seven fields needed for checking.
     """
     email_id = email["email_id"]
-
+    
+    # safeguards against wrongly categorized emails
+    if not email.get("attachments"):
+        return {
+            "email_id": email_id,
+            "status": "not_applicable",
+            "reason": "No SI/BL attachments present — likely not a document-comparison request"
+        }
+    
     # iterate every attachment
     si_path, bl_path = None, None
     for path in email.get("attachments", []):
@@ -137,14 +161,6 @@ def process_email(email, inbox):
             si_path = path
         elif "_BL" in path:
             bl_path = path
-
-        # safeguards against wrongly categorized emails
-    if not email.get("attachments"):
-        return {
-            "email_id": email_id,
-            "status": "not_applicable",
-            "reason": "No SI/BL attachments present — likely not a document-comparison request"
-        }
     
     # if safeguards if si or bl does not exist
     missing = []
