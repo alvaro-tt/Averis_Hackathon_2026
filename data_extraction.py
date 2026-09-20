@@ -1,9 +1,22 @@
 import json
 import re
 from google import genai
-import json
+import time
+
 
 client = genai.Client()
+
+def get_file_type(path):
+    if path.lower().endswith(".txt"):
+        return "txt"
+    elif path.lower().endswith(".pdf"):
+        return "pdf"
+    elif path.lower().endswith(".docx"):
+        return "docx"
+    elif path.lower().endswith(".xlsx"):
+        return "xlsx"
+    else:
+        return "unknown"
 
 def clean_json_response(raw_text):
     text = raw_text.strip()
@@ -13,7 +26,7 @@ def clean_json_response(raw_text):
         text = "\n".join(lines[1:-1])
     return text
 
-def extract_fields_with_ai(text):
+def extract_fields_with_ai(text, max_retries = 3):
     prompt = f"""Read the following shipping document and extract these 7 fields:
 shipper, consignee, notify_party, port_of_loading, port_of_discharge, container_count, gross_weight_kg
 
@@ -30,21 +43,24 @@ Respond with ONLY a JSON object, no other text. Example format:
 Document:
 {text}
 """
-
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=prompt
-    )
-
-    cleaned = clean_json_response(response.text)
-
-
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError as e:
-        print("JSON parsing failed:", e)
-        print("Raw response was:", response.text)
-        return None  # extraction failed — should trigger human review later
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model="gemini-3.6-flash",
+                contents=prompt
+            )
+            cleaned = clean_json_response(response.text)
+            return json.loads(cleaned)
+        except json.JSONDecodeError as e:
+            print("JSON parsing failed:", e)
+            return None
+        except Exception as e:
+            if attempt < max_retries - 1:
+                print(f"AI call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying again...")
+                time.sleep(5)
+            else:
+                print(f"AI call failed after {max_retries} attempts: {e}")
+                return None
 
 FIELD_LABELS = {
     "shipper": ["shipper"],
@@ -55,16 +71,6 @@ FIELD_LABELS = {
     "container_count": ["container count", "total containers"],
     "gross_weight_kg": ["gross weight", "gross wt"],
 }
-
-def convert_to_list(file):
-    """
-    Extract json file and converts into native python data structure
-
-    Returns the list/dictionary
-    """
-    with open(file, 'r') as f:
-        data = json.load(f)
-    return data
 
 def extract_field(text, possible_labels):
     """
@@ -105,75 +111,6 @@ def extract_all_fields(text):
             result[field_name] = raw
     return result
 
-def process_email(email_json_path):
-    """
-    Extracts the SI and BL path files from converted json file
-    Reads the SI and BL files
-
-    Returns the seven fields needed for checking.
-    """
-    email = convert_to_list(email_json_path)
-    email_id = email["email_id"]
-    
-    si_path, bl_path = None, None
-    for path in email["attachments"]:
-        if "_SI" in path:
-            si_path = path
-        elif "_BL" in path:
-            bl_path = path
-
-    # if safeguards if si or bl does not exist
-    if si_path is None and bl_path is None:
-        return {
-            "email_id": email_id,
-            "status": "escalate",
-            "reason": "No SI and BL attachment found"
-        }
-    if si_path is None:
-        return {
-            "email_id": email_id,
-            "status": "escalate",
-            "reason": "No SI attachment found"
-        }
-    if bl_path is None:
-        return {
-            "email_id": email_id,
-            "status": "escalate",
-            "reason": "No BL attachment found"
-        }
-    
-    try:
-        with open(si_path, "r") as f:
-            si_text = f.read()
-        with open(bl_path, "r") as f:
-            bl_text = f.read()
-    except(FileNotFoundError, UnicodeDecodeError) as e:
-        return {
-            "email_id": email_id,
-            "status": "escalate",
-            "reason": f"Could not read attachment: {e}"
-        }
-
-    
-    si_fields = extract_all_fields_hybrid(si_text)
-    bl_fields = extract_all_fields_hybrid(bl_text)
-
-    si_missing = [k for k, v in si_fields.items() if v is None]
-    bl_missing = [k for k, v in bl_fields.items() if v is None]
-
-    if si_missing or bl_missing:
-        return {
-            "email_id": email_id,
-            "status": "escalate",
-            "reason": "Field extraction failed for SI or BL"
-        }
-    
-    return {
-        "email_id": email_id,
-        "status": "ok",
-        "si_fields": si_fields,
-        "bl_fields": bl_fields}
-
 def extract_all_fields_hybrid(text):
     result = extract_all_fields(text)  # rule-based first
     if any(v is None for v in result.values()):
@@ -184,21 +121,75 @@ def extract_all_fields_hybrid(text):
                     result[k] = ai_result.get(k)
     return result
 
-# if __name__ == '__main__':
-#     email_id, si_fields, bl_fields = process_email("email_004.json")
+def process_email(email, inbox):
+    """
+    Extracts the SI and BL path files from converted json file
+    Reads the SI and BL files
 
-#     print("Email ID:", email_id)
-#     print("\n--- SI fields ---")
-#     for k, v in si_fields.items():
-#         print(f"{k}: {v}")
+    Returns the seven fields needed for checking.
+    """
+    email_id = email["email_id"]
 
-#     print("\n--- BL fields ---")
-#     for k, v in bl_fields.items():
-#         print(f"{k}: {v}")
+    # iterate every attachment
+    si_path, bl_path = None, None
+    for path in email.get("attachments", []):
+        if "_SI" in path:
+            si_path = path
+        elif "_BL" in path:
+            bl_path = path
 
-# if __name__ == '__main__':
-#     with open("attachments/email_004_SI.txt", "r") as f:
-#         si_text = f.read()
+        # safeguards against wrongly categorized emails
+    if not email.get("attachments"):
+        return {
+            "email_id": email_id,
+            "status": "not_applicable",
+            "reason": "No SI/BL attachments present — likely not a document-comparison request"
+        }
+    
+    # if safeguards if si or bl does not exist
+    missing = []
+    if si_path is None:
+        missing.append("SI")
+    if bl_path is None:
+        missing.append("BL")
+    if missing:
+        return {"email_id": email_id, "status": "escalate", "reason": f"Missing attachment(s): {', '.join(missing)}"}
 
-#     result = extract_fields_with_ai(si_text)
-#     print(result)
+    si_type = get_file_type(si_path)
+    bl_type = get_file_type(bl_path)
+
+    if si_type == "txt" and bl_type == "txt":
+        try:
+            si_text = inbox.read_text(si_path)
+            bl_text = inbox.read_text(bl_path)
+        except (FileNotFoundError, UnicodeDecodeError) as e:
+            return {"email_id": email_id, 
+                    "status": "escalate", 
+                    "reason": f"Could not read attachment: {e}"}
+
+        
+        si_fields = extract_all_fields_hybrid(si_text)
+        bl_fields = extract_all_fields_hybrid(bl_text)
+
+        si_missing = [k for k, v in si_fields.items() if v is None]
+        bl_missing = [k for k, v in bl_fields.items() if v is None]
+
+        if si_missing or bl_missing:
+            return {
+                "email_id": email_id,
+                "status": "escalate",
+                "reason": f"Field extraction failed - SI missing:{si_missing}, BL missing: {bl_missing}"
+            }
+        
+        return {
+            "email_id": email_id,
+            "status": "ok",
+            "si_fields": si_fields,
+            "bl_fields": bl_fields}
+
+    else: # for now, ignore the different file type problem. ill continue later - Alvaro
+            return {
+                "email_id": email_id,
+                "status": "escalate",
+                "reason": f"Unsupported attachment format(s) — SI: {si_type}, BL: {bl_type}"
+            }
