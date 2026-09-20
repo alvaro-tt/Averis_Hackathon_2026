@@ -58,6 +58,19 @@ FIELD_LABELS = {
     ],
 }
 
+def is_label_match(label, label_part):
+    # when exact match
+    label_part_clean = label_part.strip().lower()
+    label_clean = label.strip().lower()
+
+    if label_part_clean == label_clean:
+        return True
+    # for trailing qualifiers
+    if label_part_clean.startswith(label_clean):
+        remainder = label_part_clean[len(label_clean):].strip()
+        return remainder == "" or remainder.startswith("(")
+    return False
+
 def normalize_label(label):
     """
     normalize strings by splitting into words and sorting them then compare
@@ -73,11 +86,13 @@ def label_similarity(a, b):
 
 def extract_field(text, possible_labels, threshold = 0.85):
     """
-    needs optimization: currently O(7NM)
+    needs optimization: currently O(N*M*L)
+    L is constant so, O(N*M)
     """
-    for line in text.split("\n"):
-        line = line.strip()
+    matches = []
+    lines = [l.strip() for l in text.split("\n")] # O(N)
 
+    for i, line in enumerate(lines): # loop over N times
         # skip unnecessary lines
         if ":" not in line:
             continue
@@ -85,14 +100,30 @@ def extract_field(text, possible_labels, threshold = 0.85):
         # splits key and value
         label_part, value_part = line.split(":", 1)
         label_part = label_part.strip().lower()
+        value = value_part.strip()
 
         # check field label map for a match
-        for label in possible_labels:
-            if label in label_part:
-                return value_part.strip()
+        matched = False
+        for label in possible_labels: # loops over M labels
+            if is_label_match(label, label_part): # O(L), where L is label string length
+                matched = True
+                break
             # fuzzy matching fallback to catch typos/formatting differences
-            if label_similarity(label, label_part) >= threshold:
-                return value_part.strip()
+            if label_similarity(label, label_part) >= threshold: 
+                matched = True
+                break
+
+        if matched:
+            if value:
+                matches.append(value)
+            elif i + 1 < len(lines) and lines[i+1] and ":" not in lines[i+1]:
+                matches.append(lines[i+1].strip())
+
+
+    if len(matches) > 1 and len(set(matches)) > 1:
+        return "AMBIGUOUS (need escalation)"  # treated as needing escalation
+    elif matches:
+        return matches[0]
     return None
 
 def extract_number(raw_value):
