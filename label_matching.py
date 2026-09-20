@@ -58,6 +58,19 @@ FIELD_LABELS = {
     ],
 }
 
+def is_label_match(label, label_part):
+    # when exact match
+    label_part_clean = label_part.strip().lower()
+    label_clean = label.strip().lower()
+
+    if label_part_clean == label_clean:
+        return True
+    # for trailing qualifiers
+    if label_part_clean.startswith(label_clean):
+        remainder = label_part_clean[len(label_clean):].strip()
+        return remainder == "" or remainder.startswith("(")
+    return False
+
 def normalize_label(label):
     """
     normalize strings by splitting into words and sorting them then compare
@@ -71,30 +84,6 @@ def label_similarity(a, b):
     """
     return SequenceMatcher(None, normalize_label(a), normalize_label(b)).ratio()
 
-def extract_field(text, possible_labels, threshold = 0.85):
-    """
-    needs optimization: currently O(7NM)
-    """
-    for line in text.split("\n"):
-        line = line.strip()
-
-        # skip unnecessary lines
-        if ":" not in line:
-            continue
-
-        # splits key and value
-        label_part, value_part = line.split(":", 1)
-        label_part = label_part.strip().lower()
-
-        # check field label map for a match
-        for label in possible_labels:
-            if label in label_part:
-                return value_part.strip()
-            # fuzzy matching fallback to catch typos/formatting differences
-            if label_similarity(label, label_part) >= threshold:
-                return value_part.strip()
-    return None
-
 def extract_number(raw_value):
     if raw_value is None:
         return None
@@ -104,11 +93,43 @@ def extract_number(raw_value):
     return None
 
 def extract_all_fields(text):
+    """
+    fix: scan the document once, check all 7 fields per line, instead of scanning the document 7 times
+    and reduce order of growth: turn label lookup into a dictionary check to O(1). ill do this later -Alvaro
+    """
+    matches = {field: [] for field in FIELD_LABELS}
+    lines = [l.strip() for l in text.split("\n")] # O(N)
+
+    for i, line in enumerate(lines): # loop over N times
+        # skip unnecessary lines
+        if ":" not in line:
+            continue
+
+        # splits key and value
+        label_part, value_part = line.split(":", 1)
+        label_part = label_part.strip().lower()
+        value = value_part.strip()
+
+        for field, labels in FIELD_LABELS.items():
+            for label in labels:
+                matched = is_label_match(label, label_part) or label_similarity(label, label_part) >= 0.85
+                if matched:
+                    if value:
+                        matches[field].append(value)
+                    elif i + 1 < len(lines) and lines[i+1] and ":" not in lines[i+1]:
+                        matches[field].append(lines[i+1].strip())
+                    break
+
     result = {}
-    for field_name, labels in FIELD_LABELS.items():
-        raw = extract_field(text, labels)
-        if field_name in ("container_count", "gross_weight_kg"):
-            result[field_name] = extract_number(raw)
+    for field, values in matches.items():
+        if len(values) > 1 and len(set(values)) > 1:
+            result[field] = "AMBIGUOUS (need escalation)"  # treated as needing escalation
+        elif values:
+            result[field] = values[0]
         else:
-            result[field_name] = raw
+            result[field] = None
+
+    for field in ("container_count", "gross_weight_kg"):
+        result[field] = extract_number(result[field]) if result[field] not in (None, "AMBIGUOUS") else result[field]
+
     return result

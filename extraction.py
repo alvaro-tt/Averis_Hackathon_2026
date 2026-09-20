@@ -2,8 +2,12 @@ from ai_extraction import extract_fields_with_ai
 from label_matching import extract_all_fields
 from file_types import get_file_type
 
+AMBIGUOUS = "AMBIGUOUS (need escalation)"
+
 def extract_all_fields_hybrid(text):
     result = extract_all_fields(text)  # rule-based first
+
+    # only continue with AI extraction if fields are None (which means unresolved or ambiguous)
     if any(v is None for v in result.values()):
         ai_result = extract_fields_with_ai(text)
         if ai_result:
@@ -64,12 +68,21 @@ def process_email(email, inbox):
 
         si_missing = [k for k, v in si_fields.items() if v is None]
         bl_missing = [k for k, v in bl_fields.items() if v is None]
+        si_ambiguous = [k for k, v in si_fields.items() if v == AMBIGUOUS]
+        bl_ambiguous = [k for k, v in bl_fields.items() if v == AMBIGUOUS]
 
         if si_missing or bl_missing:
             return {
                 "email_id": email_id,
                 "status": "escalate",
                 "reason": f"Field extraction failed - SI missing:{si_missing}, BL missing: {bl_missing}"
+            }
+
+        if si_ambiguous or bl_ambiguous:
+            return {
+                "email_id": email_id,
+                "status": "escalate",
+                "reason": f"Ambiguous field(s) found (duplicate labels, different values) — SI: {si_ambiguous}, BL: {bl_ambiguous}"
             }
         
         return {
