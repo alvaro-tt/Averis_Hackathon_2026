@@ -8,7 +8,7 @@ from pathlib import Path
 from collections import Counter
 from groq import Groq
 
-client = Groq()
+client = Groq(max_retries=0)
 
 CATEGORIES = ["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]
 
@@ -105,6 +105,7 @@ def classify_email_ai(email: dict, max_retries: int = 3) -> str:
     )
 
     for attempt in range(max_retries):
+        time.sleep(1)  # small pause before each AI call to avoid tripping rate limits
         try:
             response = client.chat.completions.create(
                 model="openai/gpt-oss-120b",
@@ -121,7 +122,11 @@ def classify_email_ai(email: dict, max_retries: int = 3) -> str:
         except Exception as e:
             error_str = str(e)
             if "rate_limit" in error_str.lower() or "429" in error_str:
-                print("Daily quota exhausted, skip AI fallback for this email")
+                print(f"Rate limited on {email.get('email_id')}, attempt {attempt+1}/{max_retries}")
+                if attempt < max_retries - 1:
+                    time.sleep(10)  # longer pause specifically after a rate-limit hit
+                    continue
+                print("Still rate limited after retries, skip AI fallback for this email")
                 return "GENERAL"
             if attempt < max_retries - 1:
                 print(f"AI call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying again...")
@@ -136,8 +141,12 @@ def classify_email_ai(email: dict, max_retries: int = 3) -> str:
 def classify_all(inbox) -> dict:
     """Loop over every email in the inbox, return {email_id: category}."""
     results = {}
-    for email in inbox:
+    emails = list(inbox)
+    total = len(emails)
+    for i, email in enumerate(emails, 1):
         results[email["email_id"]] = classify_email(email)
+        if i % 20 == 0 or i == total:
+            print(f"  ...processed {i}/{total}")
     return results
 
 
