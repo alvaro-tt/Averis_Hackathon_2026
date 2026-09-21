@@ -17,7 +17,7 @@ SPAM_BODY_HINTS = ["congratulations", "guaranteed", "gift card", "claim your",
 
 COMPARISON_BODY_HINTS = ["check the details and confirm", "please check",
                         "review and confirm", "verify the attached"]
-SI_REQUEST_SUBJECT_HINTS = ["request si", "shipping instruction"]
+SI_REQUEST_BODY_HINTS = ["please find shipping instruction", "shipping instruction for"]
 INVOICE_HINTS = ["invoice", "local charges", "billing", "charge breakdown"]
 
 
@@ -49,9 +49,9 @@ def classify_email(email: dict) -> str:
     if _has_si_and_bl_attachments(email) and any(h in text for h in COMPARISON_BODY_HINTS):
         return "BL_COMPARISON"
 
-    # 3. SI_REQUEST — subject explicitly says so, and it's a NEW instruction
+    # 3. SI_REQUEST — body explicitly presents a new shipping instruction
     #    (no comparison language, since that would make it BL_COMPARISON instead).
-    if any(h in subject for h in SI_REQUEST_SUBJECT_HINTS) and \
+    if any(h in body for h in SI_REQUEST_BODY_HINTS) and \
             not any(h in text for h in COMPARISON_BODY_HINTS):
         return "SI_REQUEST"
 
