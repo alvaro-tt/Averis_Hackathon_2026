@@ -1,11 +1,17 @@
+IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp", ".webp")
+
+
 def get_file_type(path):
-    if path.lower().endswith(".txt"):
+    p = str(path).lower()
+    if p.endswith(".txt"):
         return "txt"
-    elif path.lower().endswith(".pdf"):
+    elif p.endswith(".pdf"):
         return "pdf"
-    elif path.lower().endswith(".docx"):
+    elif p.endswith(".docx"):
         return "docx"
-    elif path.lower().endswith(".xlsx"):
+    elif p.endswith(".xlsx"):
         return "xlsx"
+    elif p.endswith(IMAGE_EXTENSIONS):
+        return "image"       # scanned page -> OCR
     else:
         return "unknown"

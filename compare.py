@@ -53,10 +53,18 @@ PORT_FIELDS = {"port_of_loading", "port_of_discharge"}
 _REASON_KEYWORDS = [
     ("no si/bl attachments", "missing_attachment"),
     ("missing attachment", "missing_attachment"),
+    ("wrong document type", "wrong_doc_type"),
     ("unsupported attachment format", "wrong_doc_type"),
     ("could not read attachment", "unreadable"),
     ("field extraction failed", "missing_value"),
 ]
+
+# Values a document uses to mean "left blank". A blank is "can't compare"
+# (NEEDS_REVIEW / missing_value), never a value and never a mismatch.
+_PLACEHOLDER_RE = re.compile(
+    r"^(?:[_?.\-*\s/]+|n\s*/?\s*a|tba|tbc|tbd|nil|none|null|unknown|pending)$",
+    re.IGNORECASE,
+)
 
 # A LOCODE is only trustworthy where it's unambiguous: inside parentheses
 # ("NANTONG, CHINA (CNNTG)"), or as the entire value on its own ("CNNTG").
@@ -92,6 +100,17 @@ def _normalize_text(value):
         return None
     stripped = _LEGAL_SUFFIX_RE.sub(" ", str(value))
     return " ".join(stripped.split()).casefold()
+
+
+def _compare_key(value):
+    """Equality key for names/ports: letters and digits only, case-folded,
+    full-width chars folded (NFKC). Spacing and punctuation are formatting:
+    "EAST BRIGHT FZ-LLC" == "EAST BRIGHTFZ LLC" == "East Bright FZ LLC".
+    Every letter and digit must still match exactly - a genuinely different
+    name never matches, and there is no fuzzy/approximate matching."""
+    if value is None:
+        return None
+    return re.sub(r"[^0-9a-z]", "", unicodedata.normalize("NFKC", str(value)).casefold())
 
 
 def _normalize_number(value):
@@ -169,26 +188,43 @@ def _primary_place_name(value):
     return normalized or None
 
 
+def _strip_locode(value):
+    """"NANTONG, CHINA (CNNTG)" -> "NANTONG, CHINA"; "CNNTG" -> "". Other
+    parentheses (e.g. "PORT KLANG (WESTPORT)") are kept - they're part of the name."""
+    text = _LOCODE_PAREN_RE.sub("", str(value).upper())
+    return "" if _LOCODE_WHOLE_RE.match(text.strip()) else text.strip(" ,")
+
+
+def _place_before_comma(value):
+    return _compare_key(str(value).split(",")[0]) or None
+
+
 def _ports_match(si_value, bl_value):
-    """Ports are the one field where the two documents most often use
-    different representations of the *same* place. Three tiers, in
-    order of trust:
-      1. LOCODE vs LOCODE — highest confidence, standardized codes.
-      2. Full normalized text match.
-      3. Primary place-name match (leading city name before any comma/
-         paren) — lower confidence, used only when the first two can't
-         decide either way.
-    Returns (matched: bool, method: str) so the caller can record HOW
-    confidently this was decided, not just whether it passed.
+    """
+    A port can be written as a name, a UN/LOCODE, or both. Rules:
+      * Both sides have a place name -> the names must agree ("NANTONG" and
+        "NANTONG, CHINA" agree). If both also carry a LOCODE, the codes must
+        agree too.
+      * A code does NOT override a different name: "TUTICORIN, INDIA (KEMBA)"
+        vs "MOMBASA, KENYA (KEMBA)" is a mismatch. A BL whose name and code
+        disagree is exactly the kind of error a human must see (this happens
+        in the sample data: the defective BL keeps the SI's old code).
+      * Only one side is a bare code -> compare codes.
+    Returns (matched, method).
     """
     si_code, bl_code = _extract_locode(si_value), _extract_locode(bl_value)
+    si_name, bl_name = _strip_locode(si_value), _strip_locode(bl_value)
+
+    if si_name and bl_name:
+        names_agree = (_compare_key(si_name) == _compare_key(bl_name)
+                       or _place_before_comma(si_name) == _place_before_comma(bl_name))
+        if not names_agree:
+            return False, "place_name"
+        if si_code and bl_code:
+            return si_code == bl_code, "place_name+locode"
+        return True, "place_name"
     if si_code and bl_code:
         return si_code == bl_code, "locode"
-    if _normalize_text(si_value) == _normalize_text(bl_value):
-        return True, "text"
-    si_place, bl_place = _primary_place_name(si_value), _primary_place_name(bl_value)
-    if si_place and bl_place and si_place == bl_place:
-        return True, "place_name_fallback"
     return False, "text"
 
 
@@ -210,8 +246,10 @@ def _is_blank(value):
     the exact same failure class fixed in extract_field()."""
     if value is None:
         return True
-    if isinstance(value, str) and not value.strip():
-        return True
+    if isinstance(value, str):
+        stripped = re.sub(r"\s*(?:kgs?|mts?)\.?\s*$", "", value.strip(), flags=re.IGNORECASE)
+        if not stripped or _PLACEHOLDER_RE.match(stripped):
+            return True
     return False
 
 
@@ -235,7 +273,7 @@ def fields_match(field, si_value, bl_value):
         return _numbers_match(a, b), "numeric"
     if field in PORT_FIELDS:
         return _ports_match(si_value, bl_value)
-    return _normalize_text(si_value) == _normalize_text(bl_value), "exact_text"
+    return _compare_key(si_value) == _compare_key(bl_value), "exact_text"
 
 
 def _is_implausible_numeric(field, si_value, bl_value):
@@ -313,6 +351,49 @@ def _malformed_report(email_id, note):
     }
 
 
+_EVIDENCE_KEYS = ("si_file", "bl_file", "si_doc", "bl_doc", "retryable")
+
+
+def _evidence(extraction_result):
+    return {k: extraction_result[k] for k in _EVIDENCE_KEYS if k in extraction_result}
+
+
+def _attach_sources(field_report, extraction_result):
+    """Add, per field, where each value came from (rules / ai / ocr / vision)
+    and the text it was read from - the source evidence a reviewer needs."""
+    for side in ("si", "bl"):
+        doc = extraction_result.get(f"{side}_doc")
+        if not isinstance(doc, dict):
+            continue
+        for field, entry in field_report.items():
+            src = (doc.get("field_sources") or {}).get(field)
+            if src:
+                entry[f"{side}_source"] = src
+            ev = (doc.get("evidence") or {}).get(field)
+            if ev:
+                entry[f"{side}_evidence"] = ev
+            if field in (doc.get("disagreements") or {}):
+                entry[f"{side}_readers_disagreed"] = doc["disagreements"][field]
+    return field_report
+
+
+def _proposal(extraction_result):
+    """For an escalated case where both documents were still read (e.g. a scan
+    read by OCR), what WOULD the comparison say? Shown to the reviewer as a
+    one-click "confirm"; never used as the automatic answer."""
+    si, bl = extraction_result.get("si_fields"), extraction_result.get("bl_fields")
+    if not isinstance(si, dict) or not isinstance(bl, dict):
+        return None
+    defect_fields, field_report, implausible = compare_fields(si, bl)
+    blank = [f for f in defect_fields if field_report[f]["method"] == "missing_value"]
+    _attach_sources(field_report, extraction_result)
+    if blank or implausible:
+        return {"status": "INCOMPLETE", "missing_fields": blank, "defect_fields": [],
+                "field_report": field_report}
+    return {"status": "MISMATCH" if defect_fields else "OK",
+            "defect_fields": defect_fields, "field_report": field_report}
+
+
 def build_report(extraction_result):
     """Turn Alvaro's process_email() output into the final report for
     one email. Never raises — a malformed/unexpected input (missing
@@ -340,6 +421,23 @@ def build_report(extraction_result):
             )
 
         defect_fields, field_report, implausible_zeros = compare_fields(si_fields, bl_fields)
+        evidence = _evidence(extraction_result)
+        _attach_sources(field_report, extraction_result)
+
+        blank_fields = [f for f in defect_fields if field_report[f]["method"] == "missing_value"]
+        if blank_fields:
+            # A blank is not a discrepancy: the system can't decide -> human.
+            return {
+                "email_id": email_id,
+                "category": "BL_COMPARISON",
+                "status": "NEEDS_REVIEW",
+                "review_reason": "missing_value",
+                "has_defect": False,
+                "defect_fields": [],
+                "field_report": field_report,
+                "note": f"Blank/missing value(s): {', '.join(blank_fields)}",
+                **evidence,
+            }
 
         if implausible_zeros:
             # A 0 in a numeric field is a stronger signal of a broken
@@ -356,6 +454,7 @@ def build_report(extraction_result):
                 "defect_fields": [],
                 "field_report": field_report,
                 "note": f"Implausible numeric value(s) (zero or negative): {fields_desc}",
+                **evidence,
             }
 
         has_defect = bool(defect_fields)
@@ -367,6 +466,21 @@ def build_report(extraction_result):
             "has_defect": has_defect,
             "defect_fields": defect_fields,
             "field_report": field_report,
+            **evidence,
+        }
+
+    if status == "awaiting_documents":
+        # "Please send the draft BL": a valid request with nothing to compare
+        # yet. Not a defect and not a failure.
+        return {
+            "email_id": email_id,
+            "category": "BL_COMPARISON",
+            "status": "OK",
+            "review_reason": None,
+            "has_defect": False,
+            "defect_fields": [],
+            "field_report": {},
+            "note": extraction_result.get("reason") or "Awaiting documents",
         }
 
     # escalate / not_applicable / anything else the extraction stage produced
@@ -378,6 +492,10 @@ def build_report(extraction_result):
         "has_defect": False,
         "defect_fields": [],
         "field_report": {},
+        "note": extraction_result.get("reason"),
+        "proposed_result": _proposal(extraction_result),
+        **_evidence(extraction_result),
+        **{k: extraction_result[k] for k in ("si_fields", "bl_fields") if k in extraction_result},
     }
 
 
@@ -400,6 +518,13 @@ def render_summary(report):
     reason = report.get("review_reason")
     note = report.get("note")
     suffix = f" — {note}" if note else ""
+    proposal = report.get("proposed_result") or {}
+    if proposal.get("status") == "MISMATCH":
+        fr = proposal.get("field_report", {})
+        parts = [f"{f} (SI: {fr[f]['si']} / BL: {fr[f]['bl']})" for f in proposal["defect_fields"]]
+        suffix += " | proposed: MISMATCH — " + "; ".join(parts)
+    elif proposal.get("status") == "OK":
+        suffix += " | proposed: No mismatch detected."
     return f"{email_id}: NEEDS_REVIEW ({reason}){suffix}"
 
 
@@ -411,8 +536,8 @@ def build_submission_entry(report):
         "category": report.get("category", "BL_COMPARISON"),
         "status": report.get("status", "NEEDS_REVIEW"),
         "review_reason": report.get("review_reason"),
-        "has_defect": report.get("has_defect", False),
         "defect_fields": report.get("defect_fields", []),
+        "has_defect": report.get("has_defect", False),
     }
 
 

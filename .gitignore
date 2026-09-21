@@ -1,3 +1,12 @@
 __pycache__/
 data/
 classification_results.json
+__pycache__/
+.sdoc_cache/
+*.tmp
+submission.json
+final_submission.json
+results.json
+review_queue.json
+review_decisions.json
+report.md
