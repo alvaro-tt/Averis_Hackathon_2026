@@ -3,7 +3,7 @@ from label_matching import extract_all_fields
 from file_types import get_file_type
 from format_readers import read_pdf_text
 
-SUPPORTED_TYPES = {"txt", "pdf"}
+SUPPORTED_TYPES = {"txt", "pdf", "xlxs", "docx"}
 
 def extract_all_fields_hybrid(text):
     result = extract_all_fields(text)  # rule-based first
