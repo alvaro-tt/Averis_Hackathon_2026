@@ -29,7 +29,6 @@ def read_docx_text(file_bytes):
     doc = Document(io.BytesIO(file_bytes))
     text_parts = []
     
-    
     for paragraph in doc.paragraphs:
         if paragraph.text.strip():
             text_parts.append(paragraph.text.strip())

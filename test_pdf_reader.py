@@ -123,47 +123,21 @@ with open("results_final.json", "r") as f:
 # docx data testing
 # ------------------------------------------------------------
 
-from format_readers import read_docx_text, read_xlsx_text
+# docx_escalations = [
+#     r for r in results
+#     if r["status"] == "escalate" and "BL: docx" in r.get("reason", "")
+# ]
+# target_id = docx_escalations[0]["email_id"]
+# email = inbox.get(target_id)
+# si_path, bl_path = None, None
+# for path in email["attachments"]:
+#     if "_SI" in path:
+#         si_path = path
+#     elif "_BL" in path:
+#         bl_path = path
 
-docx_escalations = [
-    r for r in results
-    if r["status"] == "escalate" and "docx" in r.get("reason", "").lower()
-]
-target_id = docx_escalations[0]["email_id"]
-print(f"Testing with: {target_id}")
-
-email = inbox.get(target_id)
-si_path, bl_path = None, None
-
-for path in email["attachments"]:
-    if "_SI" in path:
-        si_path = path
-    elif "_BL" in path:
-        bl_path = path
-
-print(f"Found SI Path: {si_path}")
-print(f"Found BL Path: {bl_path}")
-
-if si_path:
-    si_bytes = inbox.read_bytes(si_path)
-    if si_path.lower().endswith(".docx"):
-        si_text = read_docx_text(si_bytes)
-    elif si_path.lower().endswith(".xlsx"):
-        si_text = read_xlsx_text(si_bytes)
-    else:
-        si_text = "Unknown SI format"
-    
-    print("=== SI TEXT ===")
-    print(si_text)
-
-if bl_path:
-    bl_bytes = inbox.read_bytes(bl_path)
-    if bl_path.lower().endswith(".docx"):
-        bl_text = read_docx_text(bl_bytes)
-    elif bl_path.lower().endswith(".xlsx"):
-        bl_text = read_xlsx_text(bl_bytes)
-    else:
-        bl_text = "Unknown BL format"
-        
-    print("=== BL TEXT ===")
-    print(bl_text)
+# from format_readers import read_docx_text
+# bl_bytes = inbox.read_bytes(bl_path)  # BL is the docx one, per your earlier escalation list
+# bl_text = read_docx_text(bl_bytes)
+# print("=== BL TEXT (docx) ===")
+# print(bl_text)

@@ -1,9 +1,9 @@
 from ai_extraction import extract_fields_with_ai
 from label_matching import extract_all_fields
 from file_types import get_file_type
-from format_readers import read_pdf_text
+from format_readers import read_pdf_text, read_docx_text, read_xlsx_text
 
-SUPPORTED_TYPES = {"txt", "pdf", "xlxs", "docx"}
+SUPPORTED_TYPES = {"txt", "pdf", "xlsx", "docx"}
 
 def extract_all_fields_hybrid(text):
     result = extract_all_fields(text)  # rule-based first
@@ -26,6 +26,12 @@ def read_attachment_text(path, file_type, inbox):
     if file_type == "pdf":
         file_bytes = inbox.read_bytes(path)
         return read_pdf_text(file_bytes)
+    if file_type == "docx":
+        file_bytes = inbox.read_bytes(path)
+        return read_docx_text(file_bytes)
+    if file_type == "xlsx":
+        file_bytes = inbox.read_bytes(path)
+        return read_xlsx_text(file_bytes)
     raise ValueError(f"No reader implemented for file type: {file_type}")
 
 def process_email(email, inbox):
