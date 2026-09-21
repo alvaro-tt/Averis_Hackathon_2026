@@ -35,6 +35,7 @@ COMPARISON_BODY_HINTS = [
 ]
 SI_REQUEST_BODY_HINTS = ["please find shipping instruction", "shipping instruction for"]
 INVOICE_HINTS = ["query on invoice", "local charges", "charge breakdown", "cancel invoice"]
+BL_REQUEST_NO_ATTACHMENT_HINTS = ["send the draft bl", "please compare the si and draft bl"]
 
 
 def _has_si_and_bl_attachments(email: dict) -> bool:
@@ -81,10 +82,15 @@ def classify_email(email: dict) -> str:
     if _has_si_and_bl_attachments(email):
         return classify_email_ai(email)
 
-    # 6. No SI+BL attachments and no rule matched -> safe default.
-    #    BL_COMPARISON structurally requires both SI+BL attachments (already
-    #    checked above), so this can't be one. Rather than spend an AI call
-    #    on every leftover email, default to GENERAL — the safest bucket.
+    # 6. No SI+BL attachments, but the body still asks for a BL check/comparison
+    #    (e.g. "please send the draft BL for checking") -> still BL_COMPARISON.
+    #    The missing attachment will be correctly caught downstream as a
+    #    NEEDS_REVIEW / missing_attachment case, rather than silently
+    #    disappearing into GENERAL. (Per team decision with Ali.)
+    if any(h in body for h in BL_REQUEST_NO_ATTACHMENT_HINTS):
+        return "BL_COMPARISON"
+
+    # 7. Nothing else matched -> safe default.
     return "GENERAL"
 
 
