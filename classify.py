@@ -1,12 +1,14 @@
-import json
-from pathlib import Path
-from collections import Counter
-
-#!/usr/bin/env python3
 """
 classify.py — Stage 1 of the SDOC pipeline: sort every email into one of
 5 categories: BL_COMPARISON, SI_REQUEST, INVOICE_QUERY, GENERAL, SPAM.
 """
+import json
+import time
+from pathlib import Path
+from collections import Counter
+from groq import Groq
+
+client = Groq()
 
 CATEGORIES = ["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]
 
@@ -60,6 +62,67 @@ def classify_email(email: dict) -> str:
         return "INVOICE_QUERY"
 
     return "GENERAL"
+
+
+CLASSIFY_PROMPT_TEMPLATE = """You are classifying an email from a shipping operations inbox into exactly ONE of these 5 categories:
+
+- BL_COMPARISON: someone attaches a Shipping Instruction (SI) and a draft Bill of Lading (BL), asking for them to be checked/compared/confirmed against each other.
+- SI_REQUEST: someone is providing or requesting a NEW shipping instruction (shipment details like POL, POD, shipper, consignee) - not asking for a comparison.
+- INVOICE_QUERY: a question about invoice amounts, charges, or billing breakdowns.
+- GENERAL: status updates, automated notifications, reminders, or other operational messages that don't need a document check.
+- SPAM: unrelated junk, scams, or suspicious offers.
+
+Email details:
+From: {sender}
+Subject: {subject}
+Body: {body}
+Attachments: {attachments}
+
+Respond with ONLY the category name, exactly as written above (e.g. "BL_COMPARISON"). No punctuation, no explanation, nothing else.
+"""
+
+
+def classify_email_ai(email: dict, max_retries: int = 3) -> str:
+    """
+    AI-based fallback classifier for emails the rule-based checks couldn't
+    confidently place. Sends the email to Groq (gpt-oss-120b) and asks for
+    exactly one of the 5 category labels back.
+    """
+    prompt = CLASSIFY_PROMPT_TEMPLATE.format(
+        sender=email.get("from", ""),
+        subject=email.get("subject", ""),
+        body=email.get("body", ""),
+        attachments=email.get("attachments", []),
+    )
+
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(
+                model="openai/gpt-oss-120b",
+                messages=[{"role": "user", "content": prompt}]
+            )
+            answer = response.choices[0].message.content.strip().upper()
+
+            if answer in CATEGORIES:
+                return answer
+
+            print(f"Unexpected classify response for {email.get('email_id')}: {answer!r}")
+            return "GENERAL"
+
+        except Exception as e:
+            error_str = str(e)
+            if "rate_limit" in error_str.lower() or "429" in error_str:
+                print("Daily quota exhausted, skip AI fallback for this email")
+                return "GENERAL"
+            if attempt < max_retries - 1:
+                print(f"AI call failed (attempt {attempt+1}/{max_retries}): {e}. Retrying again...")
+                time.sleep(5)
+            else:
+                print(f"AI call failed after {max_retries} attempts: {e}")
+                return "GENERAL"
+
+    return "GENERAL"
+
 
 def classify_all(inbox) -> dict:
     """Loop over every email in the inbox, return {email_id: category}."""
