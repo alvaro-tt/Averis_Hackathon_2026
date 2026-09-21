@@ -46,8 +46,12 @@ def process_one(email, inbox):
     """Classify one email and, if it's a comparison request, read + compare.
     Never raises. Returns a JSON-serialisable dict."""
     email_id = email.get("email_id") if isinstance(email, dict) else None
+    is_dict = isinstance(email, dict)
+    atts = email.get("attachments") if is_dict else None
     record = {"email_id": email_id,
-              "subject": email.get("subject") if isinstance(email, dict) else None,
+              "subject": email.get("subject") if is_dict else None,
+              "sender": email.get("from") if is_dict else None,
+              "attachments": [a for a in atts if isinstance(a, str)] if isinstance(atts, list) else [],
               "processed_at": time.strftime("%Y-%m-%dT%H:%M:%S")}
     try:
         meta = classify.classify_email_with_meta(email)
@@ -129,7 +133,8 @@ def _write_json(path, data):
     tmp.replace(path)
 
 
-def run(source, out_dir=".", limit=None, retry=False):
+def run(source, out_dir=".", limit=None, retry=False, progress=None):
+    """progress: optional callable(done, total) - used by the API for a live progress bar."""
     inbox = Inbox(source)
     out = Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
@@ -157,6 +162,8 @@ def run(source, out_dir=".", limit=None, retry=False):
             records.append(previous[eid])
         else:
             records.append(process_one(email, inbox))
+        if progress:
+            progress(i, len(emails))
         if i % 50 == 0 or i == len(emails):
             print(f"  ...{i}/{len(emails)} ({time.time() - started:.0f}s)")
 

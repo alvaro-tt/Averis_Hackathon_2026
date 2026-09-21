@@ -4,5 +4,7 @@ openpyxl>=3.1
 python-docx>=1.1
 Pillow>=10
 rapidocr_onnxruntime>=1.3
+fastapi>=0.110
+uvicorn>=0.29
 # optional second OCR engine (needs the tesseract binary installed):
 # pytesseract>=0.3

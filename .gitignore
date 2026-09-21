@@ -10,3 +10,13 @@ results.json
 review_queue.json
 review_decisions.json
 report.md
+__pycache__/
+.sdoc_cache/
+*.tmp
+output/
+submission.json
+final_submission.json
+results.json
+review_queue.json
+review_decisions.json
+report.md
