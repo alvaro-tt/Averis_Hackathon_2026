@@ -1,9 +1,7 @@
-from google import genai
 from groq import Groq
 import time
 import json
 
-# client = genai.Client()
 client = Groq()
 
 def clean_json_response(raw_text):
@@ -33,10 +31,6 @@ Document:
 """
     for attempt in range(max_retries):
         try:
-            # response = client.models.generate_content(
-            #     model="gemini-3.6-flash",
-            #     contents=prompt
-            # )
             response = client.chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[{"role": "user", "content": prompt}]

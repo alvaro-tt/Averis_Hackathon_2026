@@ -1,13 +1,17 @@
 from ai_extraction import extract_fields_with_ai
 from label_matching import extract_all_fields
 from file_types import get_file_type
+from format_readers import read_pdf_text
 
-AMBIGUOUS = "AMBIGUOUS (need escalation)"
+SUPPORTED_TYPES = {"txt", "pdf"}
 
 def extract_all_fields_hybrid(text):
     result = extract_all_fields(text)  # rule-based first
 
-    # only continue with AI extraction if fields are None (which means unresolved or ambiguous)
+    # Fields that are None (not found or conflicting duplicates)
+    # gets processed with AI: the AI reads the whole document and can use
+    # surrounding context to disambiguate, like telling "Port of Discharge POD" 
+    # apart from "Proof of Delivery POD" by the section they sit in.
     if any(v is None for v in result.values()):
         ai_result = extract_fields_with_ai(text)
         if ai_result:
@@ -15,6 +19,14 @@ def extract_all_fields_hybrid(text):
                 if v is None:
                     result[k] = ai_result.get(k)
     return result
+
+def read_attachment_text(path, file_type, inbox):
+    if file_type == "txt":
+        return inbox.read_text(path)
+    if file_type == "pdf":
+        file_bytes = inbox.read_bytes(path)
+        return read_pdf_text(file_bytes)
+    raise ValueError(f"No reader implemented for file type: {file_type}")
 
 def process_email(email, inbox):
     """
@@ -53,47 +65,35 @@ def process_email(email, inbox):
     si_type = get_file_type(si_path)
     bl_type = get_file_type(bl_path)
 
-    if si_type == "txt" and bl_type == "txt":
-        try:
-            si_text = inbox.read_text(si_path)
-            bl_text = inbox.read_text(bl_path)
-        except (FileNotFoundError, UnicodeDecodeError) as e:
-            return {"email_id": email_id, 
-                    "status": "escalate", 
-                    "reason": f"Could not read attachment: {e}"}
+    if si_type not in SUPPORTED_TYPES or bl_type not in SUPPORTED_TYPES:
+        return {"email_id": email_id, "status": "escalate",
+                "reason": f"Unsupported attachment format(s) — SI: {si_type}, BL: {bl_type}"}
+
+    try:
+        si_text = read_attachment_text(si_path, si_type, inbox)
+        bl_text = read_attachment_text(bl_path, bl_type, inbox)
+    except Exception as e:
+        return {"email_id": email_id, 
+                "status": "escalate", 
+                "reason": f"Could not read attachment: {e}"}
 
         
-        si_fields = extract_all_fields_hybrid(si_text)
-        bl_fields = extract_all_fields_hybrid(bl_text)
+    si_fields = extract_all_fields_hybrid(si_text)
+    bl_fields = extract_all_fields_hybrid(bl_text)
 
-        si_missing = [k for k, v in si_fields.items() if v is None]
-        bl_missing = [k for k, v in bl_fields.items() if v is None]
-        si_ambiguous = [k for k, v in si_fields.items() if v == AMBIGUOUS]
-        bl_ambiguous = [k for k, v in bl_fields.items() if v == AMBIGUOUS]
+    # if the field is still None after both hybrid extraction, escalate
+    si_missing = [k for k, v in si_fields.items() if v is None]
+    bl_missing = [k for k, v in bl_fields.items() if v is None]
 
-        if si_missing or bl_missing:
-            return {
-                "email_id": email_id,
-                "status": "escalate",
-                "reason": f"Field extraction failed - SI missing:{si_missing}, BL missing: {bl_missing}"
-            }
-
-        if si_ambiguous or bl_ambiguous:
-            return {
-                "email_id": email_id,
-                "status": "escalate",
-                "reason": f"Ambiguous field(s) found (duplicate labels, different values) — SI: {si_ambiguous}, BL: {bl_ambiguous}"
-            }
-        
+    if si_missing or bl_missing:
         return {
             "email_id": email_id,
-            "status": "ok",
-            "si_fields": si_fields,
-            "bl_fields": bl_fields}
-
-    else: # for now, ignore the different file type problem. ill continue later - Alvaro
-            return {
-                "email_id": email_id,
-                "status": "escalate",
-                "reason": f"Unsupported attachment format(s) — SI: {si_type}, BL: {bl_type}"
-            }
+            "status": "escalate",
+            "reason": f"Field extraction failed - SI missing:{si_missing}, BL missing: {bl_missing}"
+        }
+    
+    return {
+        "email_id": email_id,
+        "status": "ok",
+        "si_fields": si_fields,
+        "bl_fields": bl_fields}

@@ -122,14 +122,15 @@ def extract_all_fields(text):
 
     result = {}
     for field, values in matches.items():
-        if len(values) > 1 and len(set(values)) > 1:
-            result[field] = "AMBIGUOUS (need escalation)"  # treated as needing escalation
-        elif values:
-            result[field] = values[0]
-        else:
+        unique_values = list(dict.fromkeys(values))  # de-dupe, preserve order
+        if len(unique_values) == 0:
             result[field] = None
+        elif len(unique_values) == 1:
+            result[field] = unique_values[0]   # all mentions agree -> trusted
+        else:
+            result[field] = None               # genuine conflict -> let AI try, using full context
 
     for field in ("container_count", "gross_weight_kg"):
-        result[field] = extract_number(result[field]) if result[field] not in (None, "AMBIGUOUS") else result[field]
-
+        result[field] = extract_number(result[field])
+        
     return result
