@@ -13,6 +13,8 @@ SPAM_BODY_HINTS = ["congratulations", "guaranteed", "gift card", "claim your",
 
 COMPARISON_BODY_HINTS = ["check the details and confirm", "please check",
                         "review and confirm", "verify the attached"]
+SI_REQUEST_SUBJECT_HINTS = ["request si", "shipping instruction"]
+INVOICE_HINTS = ["invoice", "local charges", "billing", "charge breakdown"]
 
 
 def _has_si_and_bl_attachments(email: dict) -> bool:
@@ -43,14 +45,22 @@ def classify_email(email: dict) -> str:
     if _has_si_and_bl_attachments(email) and any(h in text for h in COMPARISON_BODY_HINTS):
         return "BL_COMPARISON"
 
-    # TODO: SI_REQUEST, INVOICE_QUERY checks go here next
+    # 3. SI_REQUEST — subject explicitly says so, and it's a NEW instruction
+    #    (no comparison language, since that would make it BL_COMPARISON instead).
+    if any(h in subject for h in SI_REQUEST_SUBJECT_HINTS) and \
+            not any(h in text for h in COMPARISON_BODY_HINTS):
+        return "SI_REQUEST"
+
+    # 4. INVOICE_QUERY — billing/charges language.
+    if any(h in text for h in INVOICE_HINTS):
+        return "INVOICE_QUERY"
 
     return "GENERAL"
 
 if __name__ == "__main__":
     from loader import Inbox
-    inbox = Inbox("data")  # adjust path to match your actual data folder location
+    inbox = Inbox("data")
 
-    for eid in ["email_004", "email_254", "email_215"]:
+    for eid in ["email_004", "email_254", "email_215", "email_007", "email_002"]:
         email = inbox.get(eid)
         print(eid, "->", classify_email(email))
