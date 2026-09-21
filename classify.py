@@ -8,17 +8,31 @@ from pathlib import Path
 from collections import Counter
 from groq import Groq
 
-client = Groq(max_retries=0)
+_client = None
+
+def _get_client():
+    global _client
+    if _client is None:
+        _client = Groq(max_retries=0)
+    return _client
 
 CATEGORIES = ["BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"]
 
 # Cheap, reliable signals we can check without any AI call.
 SPAM_SENDER_HINTS = ["webmail-verify", "parcel-track", "free-iphone", "prize"]
 SPAM_BODY_HINTS = ["congratulations", "guaranteed", "gift card", "claim your",
-                   "won a", "bitcoin", "investment opportunity", "hot singles"]
+                   "won a", "bitcoin", "investment opportunity", "hot singles",
+                   "bank officer", "business proposal", "bank details"]
 
-COMPARISON_BODY_HINTS = ["check the details and confirm", "please check",
-                        "review and confirm", "verify the attached"]
+COMPARISON_BODY_HINTS = [
+    "check the details and confirm", "please check",
+    "review and confirm", "verify the attached",
+    "shipping instruction and the draft bill of lading",
+    "check the draft bl against the si",
+    "verify the bl matches the si",
+    "kindly verify", "kindly confirm the bl",
+    "for checking", "please compare the si and draft bl",
+]
 SI_REQUEST_BODY_HINTS = ["please find shipping instruction", "shipping instruction for"]
 INVOICE_HINTS = ["query on invoice", "local charges", "charge breakdown", "cancel invoice"]
 
@@ -67,10 +81,11 @@ def classify_email(email: dict) -> str:
     if _has_si_and_bl_attachments(email):
         return classify_email_ai(email)
 
-    # 6. No SI+BL attachments and no rule matched -> still worth an AI check
-    #    before defaulting, since our rules are keyword-based and may miss
-    #    real SI_REQUEST/INVOICE_QUERY/SPAM emails phrased differently.
-    return classify_email_ai(email)
+    # 6. No SI+BL attachments and no rule matched -> safe default.
+    #    BL_COMPARISON structurally requires both SI+BL attachments (already
+    #    checked above), so this can't be one. Rather than spend an AI call
+    #    on every leftover email, default to GENERAL — the safest bucket.
+    return "GENERAL"
 
 
 CLASSIFY_PROMPT_TEMPLATE = """You are classifying an email from a shipping operations inbox into exactly ONE of these 5 categories:
@@ -107,7 +122,7 @@ def classify_email_ai(email: dict, max_retries: int = 3) -> str:
     for attempt in range(max_retries):
         time.sleep(1)  # small pause before each AI call to avoid tripping rate limits
         try:
-            response = client.chat.completions.create(
+            response = _get_client().chat.completions.create(
                 model="openai/gpt-oss-120b",
                 messages=[{"role": "user", "content": prompt}]
             )
@@ -147,6 +162,7 @@ def classify_all(inbox) -> dict:
         results[email["email_id"]] = classify_email(email)
         if i % 20 == 0 or i == total:
             print(f"  ...processed {i}/{total}")
+            Path("classification_results.json").write_text(json.dumps(results, indent=2))
     return results
 
 
