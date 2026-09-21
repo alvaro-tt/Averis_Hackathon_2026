@@ -18,7 +18,7 @@ SPAM_BODY_HINTS = ["congratulations", "guaranteed", "gift card", "claim your",
 COMPARISON_BODY_HINTS = ["check the details and confirm", "please check",
                         "review and confirm", "verify the attached"]
 SI_REQUEST_BODY_HINTS = ["please find shipping instruction", "shipping instruction for"]
-INVOICE_HINTS = ["invoice", "local charges", "billing", "charge breakdown"]
+INVOICE_HINTS = ["query on invoice", "local charges", "charge breakdown", "cancel invoice"]
 
 
 def _has_si_and_bl_attachments(email: dict) -> bool:
