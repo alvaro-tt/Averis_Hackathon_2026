@@ -61,7 +61,16 @@ def classify_email(email: dict) -> str:
     if any(h in text for h in INVOICE_HINTS):
         return "INVOICE_QUERY"
 
-    return "GENERAL"
+    # 5. Anything left that still has SI+BL attachments but didn't match the
+    #    comparison-language check above — genuinely ambiguous, worth an AI call
+    #    rather than a rule-based guess (e.g. wording we haven't seen yet).
+    if _has_si_and_bl_attachments(email):
+        return classify_email_ai(email)
+
+    # 6. No SI+BL attachments and no rule matched -> still worth an AI check
+    #    before defaulting, since our rules are keyword-based and may miss
+    #    real SI_REQUEST/INVOICE_QUERY/SPAM emails phrased differently.
+    return classify_email_ai(email)
 
 
 CLASSIFY_PROMPT_TEMPLATE = """You are classifying an email from a shipping operations inbox into exactly ONE of these 5 categories:
