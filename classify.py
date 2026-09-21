@@ -1,3 +1,7 @@
+import json
+from pathlib import Path
+from collections import Counter
+
 #!/usr/bin/env python3
 """
 classify.py — Stage 1 of the SDOC pipeline: sort every email into one of
@@ -57,10 +61,24 @@ def classify_email(email: dict) -> str:
 
     return "GENERAL"
 
+def classify_all(inbox) -> dict:
+    """Loop over every email in the inbox, return {email_id: category}."""
+    results = {}
+    for email in inbox:
+        results[email["email_id"]] = classify_email(email)
+    return results
+
+
 if __name__ == "__main__":
     from loader import Inbox
-    inbox = Inbox("data")
 
-    for eid in ["email_004", "email_254", "email_215", "email_007", "email_002"]:
-        email = inbox.get(eid)
-        print(eid, "->", classify_email(email))
+    inbox = Inbox("data")
+    results = classify_all(inbox)
+
+    out_path = Path("classification_results.json")
+    out_path.write_text(json.dumps(results, indent=2))
+    print(f"Classified {len(results)} emails -> {out_path}")
+
+    counts = Counter(results.values())
+    for cat in CATEGORIES:
+        print(f"  {cat}: {counts.get(cat, 0)}")
